@@ -546,6 +546,9 @@ enc_bin_typed_value(Op_type, Bin_name, {Value_type, Enc_value}) ->
     Enc_name/binary, Enc_value/binary>>,
   enc_lv(Enc_op_bin_value).
 
+to_binary(Bin) when is_list(Bin) -> list_to_binary(Bin);
+to_binary(Bin) when is_binary(Bin) -> Bin.
+
 dec_bins(N, Data) ->
   dec_bins(N, Data, []).
 
@@ -1181,10 +1184,10 @@ dec_lv(_N, _Rest, _Acc) ->
   need_more.
 
 %% ltv - Len-Tag-Value encoding
-enc_ltv(T, <<_/binary>> = Data) ->
+enc_ltv(T, Data) when is_binary(Data) ->
   <<(size(Data)+1):32/big-unsigned-integer,
     T:8/unsigned-integer, Data/binary>>;
-enc_ltv(T, Data) ->
+enc_ltv(T, Data) when is_list(Data) ->
   enc_ltv(T, list_to_binary(Data)).
 
 dec_ltv(N, Data) ->
