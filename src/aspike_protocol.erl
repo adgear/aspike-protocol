@@ -14,6 +14,7 @@
   enc_login_request/2,
   dec_login_response/1,
   enc_put_request/4,
+  enc_put_request/5, % with TTL
   dec_put_response/1,
   enc_get_request/4,
   dec_get_response/1,
@@ -56,6 +57,7 @@
 %% Put-specific encoders/decoders
 -export([
   enc_put_request_pkt/4,
+  enc_put_request_pkt/5, % with TTL
   dec_put_request_pkt/1,
   enc_put_response_pkt/1,
   dec_put_response_pkt/1,
@@ -198,7 +200,10 @@ dec_login_response(Data) ->
   end.
 
 enc_put_request(Namespace_str, Set_name, Key_digest, Bins) ->
-  enc_message_pkt(enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins)).
+    enc_put_request(Namespace_str, Set_name, Key_digest, Bins, 0).
+    
+enc_put_request(Namespace_str, Set_name, Key_digest, Bins, TTL) ->
+  enc_message_pkt(enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins, TTL)).
 
 dec_put_response(Data) ->
   case dec_message_pkt(Data) of
@@ -455,9 +460,12 @@ from_admin_field({_, _} = TV) ->
 
 %% Put-specific encoders/decoders
 enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins) ->
+    enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins, 0).
+
+enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins, Ttl) ->
   N_fields = 3, % Namespace, Set, Key digest
   {N_bins, B} = enc_bins(?AS_OPERATOR_WRITE, Bins),
-  H = enc_put_header(N_fields, N_bins, _Ttl = 0, _Timeout = 1000,
+  H = enc_put_header(N_fields, N_bins, Ttl, _Timeout = 1000,
     _Read_attr = 0,
     _Write_attr = ?AS_MSG_INFO2_WRITE,
     _Info_attr = 0, _Generation = 0),
