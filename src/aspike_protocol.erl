@@ -14,6 +14,7 @@
   enc_login_request/2,
   dec_login_response/1,
   enc_put_request/4,
+  enc_put_request/5, % with TTL
   dec_put_response/1,
   enc_get_request/4,
   dec_get_response/1,
@@ -56,6 +57,7 @@
 %% Put-specific encoders/decoders
 -export([
   enc_put_request_pkt/4,
+  enc_put_request_pkt/5, % with TTL
   dec_put_request_pkt/1,
   enc_put_response_pkt/1,
   dec_put_response_pkt/1,
@@ -198,7 +200,10 @@ dec_login_response(Data) ->
   end.
 
 enc_put_request(Namespace_str, Set_name, Key_digest, Bins) ->
-  enc_message_pkt(enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins)).
+    enc_put_request(Namespace_str, Set_name, Key_digest, Bins, 0).
+    
+enc_put_request(Namespace_str, Set_name, Key_digest, Bins, TTL) ->
+  enc_message_pkt(enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins, TTL)).
 
 dec_put_response(Data) ->
   case dec_message_pkt(Data) of
@@ -455,9 +460,12 @@ from_admin_field({_, _} = TV) ->
 
 %% Put-specific encoders/decoders
 enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins) ->
+    enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins, 0).
+
+enc_put_request_pkt(Namespace_str, Set_name, Key_digest, Bins, Ttl) ->
   N_fields = 3, % Namespace, Set, Key digest
   {N_bins, B} = enc_bins(?AS_OPERATOR_WRITE, Bins),
-  H = enc_put_header(N_fields, N_bins, _Ttl = 0, _Timeout = 1000,
+  H = enc_put_header(N_fields, N_bins, Ttl, _Timeout = 1000,
     _Read_attr = 0,
     _Write_attr = ?AS_MSG_INFO2_WRITE,
     _Info_attr = 0, _Generation = 0),
@@ -541,10 +549,13 @@ enc_bin_typed_value(Op_type, Bin_name, {error, Reason}) ->
   Details = [{op_type, Op_type},{bin_name, Bin_name}],
   {error, {Reason, Details}};
 enc_bin_typed_value(Op_type, Bin_name, {Value_type, Enc_value}) ->
-  Enc_name = list_to_binary(Bin_name),
+  Enc_name = to_binary(Bin_name),
   Enc_op_bin_value = <<Op_type:8, Value_type:8, 0:8, (size(Enc_name)):8,
     Enc_name/binary, Enc_value/binary>>,
   enc_lv(Enc_op_bin_value).
+
+to_binary(Bin) when is_list(Bin) -> list_to_binary(Bin);
+to_binary(Bin) when is_binary(Bin) -> Bin.
 
 dec_bins(N, Data) ->
   dec_bins(N, Data, []).
@@ -680,7 +691,7 @@ enc_bin_names(Op_type, Bin_names) ->
               end, {0, <<>>}, Bin_names).
 
 enc_bin_name(Op_type, Bin_name) ->
-  Enc_name = list_to_binary(Bin_name),
+  Enc_name = to_binary(Bin_name),
   Name_len = size(Enc_name),
   % The size of <<(Name_len+4):32/big-unsigned-integer, Op_type:8, 0:8, 0:8, Name_len:8>>
   % should be equal to ?AS_OPERATION_HEADER_SIZE=8
@@ -731,7 +742,7 @@ enc_ops_response(Ops) ->
               end, {0, <<>>}, Ops).
 
 enc_op_response({Name, Value} = _Op) when is_list(Name) ->
-  enc_op_response({list_to_binary(Name), Value});
+  enc_op_response({to_binary(Name), Value});
 enc_op_response({Name, Value} = _Op) ->
   {Value_type, Enc_value} = case to_typed_enc_value(Value) of
                               {error, _} = Err ->
@@ -916,7 +927,7 @@ enc_info_request_pkt(Names) ->
 append_with_nl(Suffix, Prefix) when is_binary(Suffix) ->
   <<Prefix/binary,Suffix/binary,"\n">>;
 append_with_nl(Suffix, Prefix) when is_list(Suffix) ->
-  B = list_to_binary(Suffix),
+  B = to_binary(Suffix),
   <<Prefix/binary,B/binary,"\n">>.
 
 dec_info_request_pkt(Data) ->
@@ -924,7 +935,7 @@ dec_info_request_pkt(Data) ->
 
 enc_info_response_pkt(Fields) ->
   lists:foldl(fun (Field, Acc) ->
-    B = list_to_binary(lists:join("\t", Field)),
+    B = to_binary(lists:join("\t", Field)),
     <<Acc/binary,B/binary,"\n">> end,
     <<>>, Fields).
 
@@ -1162,10 +1173,10 @@ dec_proto(_Data) ->
 %% Utils
 
 %% lv - Len-Value encoding
-enc_lv(<<_/binary>> = Data) ->
+enc_lv(Data) when is_binary(Data) ->
   <<(size(Data)):32/big-unsigned-integer, Data/binary>>;
 enc_lv(Data) ->
-  enc_lv(list_to_binary(Data)).
+  enc_lv(to_binary(Data)).
 
 dec_lv(N, Data) ->
   dec_lv(N, Data, []).
@@ -1181,10 +1192,10 @@ dec_lv(_N, _Rest, _Acc) ->
   need_more.
 
 %% ltv - Len-Tag-Value encoding
-enc_ltv(T, <<_/binary>> = Data) ->
+enc_ltv(T, Data) when is_binary(Data) ->
   <<(size(Data)+1):32/big-unsigned-integer,
     T:8/unsigned-integer, Data/binary>>;
-enc_ltv(T, Data) ->
+enc_ltv(T, Data) when is_list(Data) ->
   enc_ltv(T, list_to_binary(Data)).
 
 dec_ltv(N, Data) ->
